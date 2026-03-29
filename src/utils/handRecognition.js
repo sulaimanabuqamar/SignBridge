@@ -15,6 +15,11 @@ function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v))
 }
 
+function average(values) {
+  if (!values.length) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
 function getFingerStates(hand) {
   const wrist = hand[0]
   const palmScale = Math.max(dist(wrist, hand[9]), 0.001)
@@ -101,13 +106,145 @@ function classifyFromHand(hand, handedness = 'Unknown') {
   }
 }
 
+function getSequenceSummary(history) {
+  const frames = history
+    .map((entry) => {
+      const hand = entry.landmarks?.[0]
+      if (!hand) return null
+      return {
+        hand,
+        handedness: entry.handednesses?.[0]?.[0]?.categoryName || 'Unknown',
+        fingers: getFingerStates(hand),
+        wrist: hand[0],
+      }
+    })
+    .filter(Boolean)
+
+  if (!frames.length) return null
+
+  const xs = frames.map((frame) => frame.wrist.x)
+  const ys = frames.map((frame) => frame.wrist.y)
+  const openness = average(frames.map((frame) => frame.fingers.openness))
+  const openCount = average(
+    frames.map(
+      (frame) =>
+        Number(frame.fingers.thumbOpen) +
+        Number(frame.fingers.indexOpen) +
+        Number(frame.fingers.middleOpen) +
+        Number(frame.fingers.ringOpen) +
+        Number(frame.fingers.pinkyOpen),
+    ),
+  )
+
+  const counts = frames.reduce(
+    (acc, frame) => {
+      if (frame.fingers.thumbOpen) acc.thumbOpen += 1
+      if (frame.fingers.indexOpen) acc.indexOpen += 1
+      if (frame.fingers.middleOpen) acc.middleOpen += 1
+      if (frame.fingers.ringOpen) acc.ringOpen += 1
+      if (frame.fingers.pinkyOpen) acc.pinkyOpen += 1
+      return acc
+    },
+    { thumbOpen: 0, indexOpen: 0, middleOpen: 0, ringOpen: 0, pinkyOpen: 0 },
+  )
+
+  const total = frames.length
+  const majority = Object.fromEntries(
+    Object.entries(counts).map(([key, value]) => [key, value / total >= 0.58]),
+  )
+
+  return {
+    handedness: frames[frames.length - 1].handedness,
+    openCount,
+    openness,
+    xTravel: Math.max(...xs) - Math.min(...xs),
+    yTravel: Math.max(...ys) - Math.min(...ys),
+    majority,
+    sampleCount: total,
+  }
+}
+
+function classifyFromSequence(history) {
+  const summary = getSequenceSummary(history)
+  if (!summary || summary.sampleCount < 6) return null
+
+  const { handedness, openCount, openness, xTravel, yTravel, majority, sampleCount } = summary
+  const source = `hand_landmarker_sequence_${handedness.toLowerCase()}`
+
+  if (openCount >= 4 && openness > 1.42 && xTravel > 0.12) {
+    return {
+      text: 'Hello',
+      confidence: clamp(0.79 + xTravel * 0.45, 0.79, 0.95),
+      source,
+      sampleCount,
+    }
+  }
+
+  if (openCount <= 1.35 && openness < 1.18 && yTravel > 0.09) {
+    return {
+      text: 'Yes',
+      confidence: clamp(0.76 + yTravel * 0.55, 0.76, 0.92),
+      source,
+      sampleCount,
+    }
+  }
+
+  if (
+    majority.indexOpen &&
+    majority.middleOpen &&
+    !majority.ringOpen &&
+    !majority.pinkyOpen &&
+    openCount <= 2.6
+  ) {
+    return {
+      text: xTravel > 0.055 || yTravel > 0.045 ? 'No' : 'Please repeat',
+      confidence: clamp(0.75 + Math.max(xTravel, yTravel) * 0.45, 0.75, 0.9),
+      source,
+      sampleCount,
+    }
+  }
+
+  if (majority.indexOpen && !majority.middleOpen && !majority.ringOpen && !majority.pinkyOpen) {
+    return {
+      text: 'I need help',
+      confidence: clamp(0.74 + (majority.thumbOpen ? 0.04 : 0), 0.74, 0.88),
+      source,
+      sampleCount,
+    }
+  }
+
+  if (openCount <= 1.2 && openness < 1.12) {
+    return {
+      text: 'No',
+      confidence: clamp(0.7 + (1.12 - openness) * 0.4, 0.7, 0.88),
+      source,
+      sampleCount,
+    }
+  }
+
+  return null
+}
+
 export function recognizeHandCapture({
   detection,
+  history = [],
   imageData,
   demoMode,
   captureIndex,
   hasLiveVideo,
 }) {
+  if (!demoMode && history.length) {
+    const sequenceResult = classifyFromSequence(history)
+    if (sequenceResult) {
+      return {
+        text: sequenceResult.text,
+        confidence: sequenceResult.confidence,
+        source: sequenceResult.source,
+        timestamp: Date.now(),
+      }
+    }
+  }
+
   if (!demoMode && detection?.landmarks?.length) {
     const primaryHand = detection.landmarks[0]
     const primaryHandedness = detection.handednesses?.[0]?.[0]?.categoryName || 'Unknown'

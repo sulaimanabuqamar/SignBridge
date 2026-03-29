@@ -16,11 +16,19 @@ export default function SpeechToSign({
   playbackKey = 0,
   demoEnabled,
   onStartSpeaking,
+  onSpeechPreview,
   onSpeechText,
+  onSpeechError,
   onSubmitTypedText,
+  speechError = '',
 }) {
   const recRef = useRef(null)
   const [draft, setDraft] = useState('')
+  const [supportsRecognition, setSupportsRecognition] = useState(true)
+
+  useEffect(() => {
+    setSupportsRecognition(Boolean(getRecognition()))
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -52,39 +60,87 @@ export default function SpeechToSign({
 
   function handleStart() {
     if (demoEnabled || processing) return
-    const Recognition = getRecognition()
-    onStartSpeaking()
 
-    if (!Recognition) {
-      window.setTimeout(() => {
-        onSpeechText('Can you send me the report tomorrow?')
-      }, 1400)
+    if (listening) {
+      try {
+        recRef.current?.stop()
+      } catch {
+        /* noop */
+      }
       return
     }
 
+    const Recognition = getRecognition()
+    if (!Recognition) {
+      setSupportsRecognition(false)
+      onSpeechError?.(
+        'Voice transcription is not available in this browser. Please use Chrome or Edge, or type your text below.',
+      )
+      return
+    }
+
+    setSupportsRecognition(true)
+    onStartSpeaking?.()
+
     const rec = new Recognition()
     rec.lang = 'en-US'
-    rec.interimResults = false
+    rec.continuous = false
+    rec.interimResults = true
     rec.maxAlternatives = 1
     recRef.current = rec
 
+    let finalTranscript = ''
+
     rec.onresult = (event) => {
-      const text = event.results[0][0].transcript
-      onSpeechText(simplifyText(text))
+      let interimTranscript = ''
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        const chunk = result[0]?.transcript ?? ''
+        if (result.isFinal) {
+          finalTranscript = `${finalTranscript} ${chunk}`.trim()
+        } else {
+          interimTranscript = `${interimTranscript} ${chunk}`.trim()
+        }
+      }
+
+      const preview = simplifyText(`${finalTranscript} ${interimTranscript}`.trim())
+      if (preview) onSpeechPreview?.(preview)
     }
 
-    rec.onerror = () => {
-      onSpeechText('I need help with this task.')
+    rec.onerror = (event) => {
+      recRef.current = null
+      const errorCode = event?.error
+      if (errorCode === 'no-speech') {
+        onSpeechError?.('I did not hear anything. Please try again and speak a little closer to the microphone.')
+        return
+      }
+      if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+        onSpeechError?.('Microphone permission is blocked. Please allow microphone access and try again.')
+        return
+      }
+      if (errorCode === 'audio-capture') {
+        onSpeechError?.('No working microphone was found. Please check your input device and try again.')
+        return
+      }
+      onSpeechError?.('Voice transcription failed before text could be created. Please try again or type your sentence below.')
     }
 
     rec.onend = () => {
       recRef.current = null
+      const text = simplifyText(finalTranscript)
+      if (text) {
+        onSpeechText?.(text)
+      } else {
+        onSpeechError?.('No transcript was captured. Please try again or type your sentence below.')
+      }
     }
 
     try {
       rec.start()
     } catch {
-      onSpeechText('Please repeat what you said.')
+      recRef.current = null
+      onSpeechError?.('Voice transcription could not start. Please wait a moment and try again.')
     }
   }
 
@@ -96,24 +152,39 @@ export default function SpeechToSign({
             Hearing participant
           </p>
           <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
-            Speech → Sign
+            Speech -&gt; Sign
           </h2>
         </div>
-        <button
-          type="button"
-          disabled={demoEnabled || processing}
-          onClick={handleStart}
-          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {listening ? 'Listening…' : processing ? 'Working…' : 'Start Speaking'}
-        </button>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              supportsRecognition ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+            }`}
+          >
+            {supportsRecognition ? 'Mic Ready' : 'Typing Fallback'}
+          </span>
+          <button
+            type="button"
+            disabled={demoEnabled || processing}
+            onClick={handleStart}
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {listening ? 'Stop Listening' : processing ? 'Building Sign...' : 'Start Speaking'}
+          </button>
+        </div>
       </header>
+
+      {speechError ? (
+        <div className="flex flex-shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {speechError}
+        </div>
+      ) : null}
 
       <form onSubmit={handleTypedSubmit} className="flex flex-shrink-0 flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Type to sign</p>
-            <p className="text-sm text-zinc-500">Start here while we improve transcription.</p>
+            <p className="text-sm text-zinc-500">Manual input still works if microphone transcription is unavailable.</p>
           </div>
           <button
             type="submit"
@@ -139,9 +210,7 @@ export default function SpeechToSign({
           <p className="mt-2 flex-1 text-lg leading-relaxed text-zinc-900">
             {transcript || (
               <span className="text-zinc-400">
-                {listening
-                  ? 'Listening for speech…'
-                  : 'Press “Start Speaking” or use quick phrases.'}
+                {listening ? 'Listening for speech...' : 'Press "Start Speaking" or use quick phrases.'}
               </span>
             )}
           </p>
@@ -150,7 +219,7 @@ export default function SpeechToSign({
         <div className="flex min-h-[120px] flex-col overflow-hidden rounded-xl bg-indigo-50/60 p-4 ring-1 ring-indigo-100">
           <p className="text-xs font-medium text-indigo-800/80">Signed text</p>
           <p className="mt-2 font-mono text-xl font-semibold leading-snug tracking-wide text-indigo-950">
-            {gloss || <span className="font-sans text-base font-normal text-indigo-400">—</span>}
+            {gloss || <span className="font-sans text-base font-normal text-indigo-400">-</span>}
           </p>
         </div>
       </div>

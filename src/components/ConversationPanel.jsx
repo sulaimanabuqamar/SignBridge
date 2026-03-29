@@ -32,6 +32,7 @@ export default function ConversationPanel() {
   const [speechTranscript, setSpeechTranscript] = useState('')
   const [speechGloss, setSpeechGloss] = useState('')
   const [speechPoseUrl, setSpeechPoseUrl] = useState('')
+  const [speechError, setSpeechError] = useState('')
   const [speechListening, setSpeechListening] = useState(false)
   const [speechBusy, setSpeechBusy] = useState(false)
   const [signingKey, setSigningKey] = useState(0)
@@ -52,6 +53,7 @@ export default function ConversationPanel() {
     setSpeechTranscript('')
     setSpeechGloss('')
     setSpeechPoseUrl('')
+    setSpeechError('')
     setSpeechListening(false)
     setSpeechBusy(false)
     setSigningKey(0)
@@ -66,11 +68,10 @@ export default function ConversationPanel() {
     const text = simplifyText(raw)
     if (!text) return
     setSpeechListening(false)
-    setSpeechBusy(true)
-    await randomLatency()
+    setSpeechError('')
     setSpeechTranscript(text)
-    await delay(340)
-    await randomLatency()
+    setSpeechBusy(true)
+    await delay(180)
     setSpeechGloss(simplifyText(text))
     setSpeechPoseUrl(buildSignedPoseUrl(text))
     setSigningKey((k) => k + 1)
@@ -83,8 +84,31 @@ export default function ConversationPanel() {
     if (demoEnabled) return
     setSpeechTranscript('')
     setSpeechGloss('')
+    setSpeechPoseUrl('')
+    setSpeechError('')
     setSpeechListening(true)
   }, [demoEnabled])
+
+  const handleSpeechPreview = useCallback(
+    (text) => {
+      if (demoEnabled) return
+      setSpeechTranscript(text)
+      setSpeechGloss('')
+      setSpeechPoseUrl('')
+      setSpeechError('')
+    },
+    [demoEnabled],
+  )
+
+  const handleSpeechError = useCallback(
+    (message) => {
+      if (demoEnabled) return
+      setSpeechListening(false)
+      setSpeechBusy(false)
+      setSpeechError(message)
+    },
+    [demoEnabled],
+  )
 
   const handleSpeechText = useCallback(
     async (text) => {
@@ -151,6 +175,7 @@ export default function ConversationPanel() {
         if (cancelled) return
         if (step.kind === 'speech_listen') {
           setSpeechListening(true)
+          setSpeechError('')
           await delay(step.ms)
           setSpeechListening(false)
           setSpeechBusy(true)
@@ -230,8 +255,11 @@ export default function ConversationPanel() {
             playbackKey={signingKey}
             demoEnabled={demoEnabled}
             onStartSpeaking={handleStartSpeaking}
+            onSpeechPreview={handleSpeechPreview}
             onSpeechText={handleSpeechText}
+            onSpeechError={handleSpeechError}
             onSubmitTypedText={handleTypedText}
+            speechError={speechError}
           />
         </div>
 

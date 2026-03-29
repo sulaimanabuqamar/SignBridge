@@ -40,6 +40,7 @@ export default function SignToText({
   const overlayRef = useRef(null)
   const captureIndexRef = useRef(0)
   const detectionRef = useRef(null)
+  const historyRef = useRef([])
 
   const [capturePhase, setCapturePhase] = useState(/** @type {'idle' | 'capturing' | 'processing'} */ ('idle'))
   const [previewUrl, setPreviewUrl] = useState(/** @type {string | null} */ (null))
@@ -91,6 +92,7 @@ export default function SignToText({
 
     const result = recognizeHandCapture({
       detection: detectionRef.current,
+      history: historyRef.current,
       imageData,
       demoMode: demoEnabled,
       captureIndex: idx,
@@ -110,6 +112,7 @@ export default function SignToText({
   useEffect(() => {
     if (demoEnabled) {
       detectionRef.current = null
+      historyRef.current = []
       setTrackingReady(false)
       setTrackingError('')
       clearOverlay(overlayRef.current)
@@ -139,6 +142,19 @@ export default function SignToText({
         const detection = await detectHands(video, performance.now())
         if (disposed) return
         detectionRef.current = detection
+        const timestamp = detection?.timestamp ?? performance.now()
+        if (detection?.landmarks?.length) {
+          historyRef.current = [
+            ...historyRef.current.filter((entry) => timestamp - entry.timestamp <= 2000),
+            {
+              landmarks: detection.landmarks,
+              handednesses: detection.handednesses,
+              timestamp,
+            },
+          ].slice(-24)
+        } else {
+          historyRef.current = historyRef.current.filter((entry) => timestamp - entry.timestamp <= 1200)
+        }
         drawHandOverlay(overlay, detection)
         setTrackingReady(Boolean(detection))
         setTrackingError('')
@@ -158,6 +174,7 @@ export default function SignToText({
     return () => {
       disposed = true
       window.cancelAnimationFrame(rafId)
+      historyRef.current = []
       clearOverlay(overlay)
     }
   }, [demoEnabled, isLive, videoRef])
