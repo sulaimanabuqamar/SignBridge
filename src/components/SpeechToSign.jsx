@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { simplifyText } from '../utils/mockTranslate'
-import ProceduralAvatar from './ProceduralAvatar'
+import PoseSigner from './PoseSigner'
 
 function getRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition
@@ -9,7 +9,7 @@ function getRecognition() {
 export default function SpeechToSign({
   transcript,
   gloss,
-  signPlan,
+  poseUrl,
   listening,
   processing,
   avatarPhase = 'idle',
@@ -18,7 +18,6 @@ export default function SpeechToSign({
   onStartSpeaking,
   onSpeechText,
   onSubmitTypedText,
-  onAvatarPlaybackEnd,
 }) {
   const recRef = useRef(null)
   const [draft, setDraft] = useState('')
@@ -149,7 +148,7 @@ export default function SpeechToSign({
         </div>
 
         <div className="flex min-h-[120px] flex-col overflow-hidden rounded-xl bg-indigo-50/60 p-4 ring-1 ring-indigo-100">
-          <p className="text-xs font-medium text-indigo-800/80">Sign gloss</p>
+          <p className="text-xs font-medium text-indigo-800/80">Signed text</p>
           <p className="mt-2 font-mono text-xl font-semibold leading-snug tracking-wide text-indigo-950">
             {gloss || <span className="font-sans text-base font-normal text-indigo-400">—</span>}
           </p>
@@ -157,15 +156,12 @@ export default function SpeechToSign({
       </div>
 
       <div className="min-h-0 flex-1">
-        <ProceduralAvatar
-          key={playbackKey}
+        <PoseSigner
+          key={`${playbackKey}-${poseUrl}`}
+          src={poseUrl}
           phrase={transcript}
-          gloss={gloss}
-          signPlan={signPlan}
-          phase={avatarPhase}
-          playbackKey={playbackKey}
+          loading={avatarPhase === 'preparing' || (avatarPhase === 'signing' && !poseUrl)}
           demoMode={demoEnabled}
-          onPlaybackEnd={onAvatarPlaybackEnd}
         />
       </div>
     </section>

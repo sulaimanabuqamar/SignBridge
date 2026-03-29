@@ -3,7 +3,7 @@ import { DEMO_HEARING_LINE, DEMO_SCRIPT } from '../utils/demoScript'
 import { estimateSequenceDurationMs } from '../utils/avatarMotion'
 import { mockSignRecognition } from '../utils/mockSignRecognition'
 import { simplifyText } from '../utils/mockTranslate'
-import { buildSignPlan } from '../utils/signProduction'
+import { buildSignedPoseUrl } from '../utils/translateApi'
 import { playSoftChime } from '../utils/sound'
 import DemoMode from './DemoMode'
 import PhraseButtons from './PhraseButtons'
@@ -31,7 +31,7 @@ export default function ConversationPanel() {
   const [demoEnabled, setDemoEnabled] = useState(false)
   const [speechTranscript, setSpeechTranscript] = useState('')
   const [speechGloss, setSpeechGloss] = useState('')
-  const [speechSignPlan, setSpeechSignPlan] = useState([])
+  const [speechPoseUrl, setSpeechPoseUrl] = useState('')
   const [speechListening, setSpeechListening] = useState(false)
   const [speechBusy, setSpeechBusy] = useState(false)
   const [signingKey, setSigningKey] = useState(0)
@@ -51,7 +51,7 @@ export default function ConversationPanel() {
   const resetOutputs = useCallback(() => {
     setSpeechTranscript('')
     setSpeechGloss('')
-    setSpeechSignPlan([])
+    setSpeechPoseUrl('')
     setSpeechListening(false)
     setSpeechBusy(false)
     setSigningKey(0)
@@ -71,9 +71,8 @@ export default function ConversationPanel() {
     setSpeechTranscript(text)
     await delay(340)
     await randomLatency()
-    const plan = buildSignPlan(text)
-    setSpeechGloss(plan.gloss)
-    setSpeechSignPlan(plan.sequence)
+    setSpeechGloss(simplifyText(text))
+    setSpeechPoseUrl(buildSignedPoseUrl(text))
     setSigningKey((k) => k + 1)
     setSigningActive(true)
     setSpeechBusy(false)
@@ -127,10 +126,6 @@ export default function ConversationPanel() {
     return () => window.clearTimeout(t)
   }, [signingKey, speechGloss])
 
-  const handleAvatarPlaybackEnd = useCallback(() => {
-    setSigningActive(false)
-  }, [])
-
   const avatarPhase = useMemo(() => {
     if (speechListening || (speechBusy && !speechGloss)) return 'preparing'
     if (signingActive && speechGloss) return 'signing'
@@ -171,9 +166,8 @@ export default function ConversationPanel() {
           continue
         }
         if (step.kind === 'speech_gloss') {
-          const plan = buildSignPlan(DEMO_HEARING_LINE)
-          setSpeechGloss(plan.gloss)
-          setSpeechSignPlan(plan.sequence)
+          setSpeechGloss(simplifyText(DEMO_HEARING_LINE))
+          setSpeechPoseUrl(buildSignedPoseUrl(DEMO_HEARING_LINE))
           setSigningKey((k) => k + 1)
           setSigningActive(true)
           setSpeechBusy(false)
@@ -229,7 +223,7 @@ export default function ConversationPanel() {
           <SpeechToSign
             transcript={speechTranscript}
             gloss={speechGloss}
-            signPlan={speechSignPlan}
+            poseUrl={speechPoseUrl}
             listening={speechListening}
             processing={speechBusy}
             avatarPhase={avatarPhase}
@@ -238,7 +232,6 @@ export default function ConversationPanel() {
             onStartSpeaking={handleStartSpeaking}
             onSpeechText={handleSpeechText}
             onSubmitTypedText={handleTypedText}
-            onAvatarPlaybackEnd={handleAvatarPlaybackEnd}
           />
         </div>
 
