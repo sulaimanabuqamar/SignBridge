@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCamera } from '../hooks/useCamera'
-import { recognizeSignFrame } from '../utils/mockSignRecognition'
+import { detectHands } from '../utils/handLandmarker'
+import { clearOverlay, drawHandOverlay } from '../utils/handOverlay'
+import { recognizeHandCapture } from '../utils/handRecognition'
 import TypingText from './TypingText'
 
 function delay(ms) {
@@ -35,10 +37,14 @@ export default function SignToText({
 }) {
   const { videoRef, status: cameraStatus, error: cameraError, isLive, retry } = useCamera()
   const canvasRef = useRef(null)
+  const overlayRef = useRef(null)
   const captureIndexRef = useRef(0)
+  const detectionRef = useRef(null)
 
   const [capturePhase, setCapturePhase] = useState(/** @type {'idle' | 'capturing' | 'processing'} */ ('idle'))
   const [previewUrl, setPreviewUrl] = useState(/** @type {string | null} */ (null))
+  const [trackingReady, setTrackingReady] = useState(false)
+  const [trackingError, setTrackingError] = useState('')
 
   const busy = capturePhase !== 'idle' || demoSignBusy
   const cameraBroken = cameraStatus === 'error' || cameraStatus === 'unsupported'
@@ -83,7 +89,8 @@ export default function SignToText({
     const idx = captureIndexRef.current
     captureIndexRef.current += 1
 
-    const result = recognizeSignFrame({
+    const result = recognizeHandCapture({
+      detection: detectionRef.current,
       imageData,
       demoMode: demoEnabled,
       captureIndex: idx,
@@ -99,6 +106,61 @@ export default function SignToText({
   useEffect(() => {
     return () => setPreviewUrl(null)
   }, [])
+
+  useEffect(() => {
+    if (demoEnabled) {
+      detectionRef.current = null
+      setTrackingReady(false)
+      setTrackingError('')
+      clearOverlay(overlayRef.current)
+      return undefined
+    }
+
+    const video = videoRef.current
+    const overlay = overlayRef.current
+    if (!video || !overlay || !isLive) return undefined
+
+    let disposed = false
+    let rafId = 0
+
+    const syncCanvasSize = () => {
+      const width = video.videoWidth || 640
+      const height = video.videoHeight || 480
+      if (overlay.width !== width) overlay.width = width
+      if (overlay.height !== height) overlay.height = height
+    }
+
+    const tick = async () => {
+      if (disposed) return
+
+      syncCanvasSize()
+
+      try {
+        const detection = await detectHands(video, performance.now())
+        if (disposed) return
+        detectionRef.current = detection
+        drawHandOverlay(overlay, detection)
+        setTrackingReady(Boolean(detection))
+        setTrackingError('')
+      } catch (error) {
+        if (!disposed) {
+          setTrackingReady(false)
+          setTrackingError(error?.message || 'Hand tracking unavailable')
+          clearOverlay(overlay)
+        }
+      }
+
+      rafId = window.requestAnimationFrame(tick)
+    }
+
+    rafId = window.requestAnimationFrame(tick)
+
+    return () => {
+      disposed = true
+      window.cancelAnimationFrame(rafId)
+      clearOverlay(overlay)
+    }
+  }, [demoEnabled, isLive, videoRef])
 
   const cameraLabel =
     cameraStatus === 'requesting'
@@ -142,6 +204,12 @@ export default function SignToText({
             muted
           />
 
+          <canvas
+            ref={overlayRef}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            aria-hidden
+          />
+
           {cameraStatus === 'requesting' ? (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-zinc-800 to-zinc-950">
               <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/15 border-t-indigo-400" />
@@ -178,6 +246,12 @@ export default function SignToText({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
               </span>
               Live
+            </div>
+          ) : null}
+
+          {isLive && !demoEnabled ? (
+            <div className="pointer-events-none absolute right-2 top-2 z-30 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white ring-1 ring-white/10">
+              {trackingReady ? 'Hand tracking live' : trackingError ? 'Tracking error' : 'Starting tracking'}
             </div>
           ) : null}
 
@@ -220,6 +294,7 @@ export default function SignToText({
               <span className="font-medium text-zinc-600">{formatSource(recognitionMeta.source)}</span>
             </p>
           ) : null}
+          {trackingError ? <p className="mt-1 text-[11px] text-amber-600">{trackingError}</p> : null}
         </div>
       </div>
 
@@ -247,5 +322,6 @@ export default function SignToText({
 function formatSource(source) {
   if (source === 'demo_inference') return 'Demo inference'
   if (source === 'camera_inference') return 'Camera inference'
+  if (source.startsWith('hand_landmarker')) return 'MediaPipe hand landmarks'
   return source
 }

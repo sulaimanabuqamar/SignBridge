@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEMO_HEARING_LINE, DEMO_SCRIPT } from '../utils/demoScript'
+import { estimateSequenceDurationMs } from '../utils/avatarMotion'
 import { mockSignRecognition } from '../utils/mockSignRecognition'
-import { simplifyText, toSignGloss } from '../utils/mockTranslate'
+import { simplifyText } from '../utils/mockTranslate'
+import { buildSignPlan } from '../utils/signProduction'
 import { playSoftChime } from '../utils/sound'
 import DemoMode from './DemoMode'
 import PhraseButtons from './PhraseButtons'
@@ -29,6 +31,7 @@ export default function ConversationPanel() {
   const [demoEnabled, setDemoEnabled] = useState(false)
   const [speechTranscript, setSpeechTranscript] = useState('')
   const [speechGloss, setSpeechGloss] = useState('')
+  const [speechSignPlan, setSpeechSignPlan] = useState([])
   const [speechListening, setSpeechListening] = useState(false)
   const [speechBusy, setSpeechBusy] = useState(false)
   const [signingKey, setSigningKey] = useState(0)
@@ -48,6 +51,7 @@ export default function ConversationPanel() {
   const resetOutputs = useCallback(() => {
     setSpeechTranscript('')
     setSpeechGloss('')
+    setSpeechSignPlan([])
     setSpeechListening(false)
     setSpeechBusy(false)
     setSigningKey(0)
@@ -67,7 +71,9 @@ export default function ConversationPanel() {
     setSpeechTranscript(text)
     await delay(340)
     await randomLatency()
-    setSpeechGloss(toSignGloss(text))
+    const plan = buildSignPlan(text)
+    setSpeechGloss(plan.gloss)
+    setSpeechSignPlan(plan.sequence)
     setSigningKey((k) => k + 1)
     setSigningActive(true)
     setSpeechBusy(false)
@@ -82,6 +88,14 @@ export default function ConversationPanel() {
   }, [demoEnabled])
 
   const handleSpeechText = useCallback(
+    async (text) => {
+      if (demoEnabled) return
+      await processSpeechInput(text)
+    },
+    [demoEnabled, processSpeechInput],
+  )
+
+  const handleTypedText = useCallback(
     async (text) => {
       if (demoEnabled) return
       await processSpeechInput(text)
@@ -109,9 +123,9 @@ export default function ConversationPanel() {
 
   useEffect(() => {
     if (signingKey === 0) return undefined
-    const t = window.setTimeout(() => setSigningActive(false), 6200)
+    const t = window.setTimeout(() => setSigningActive(false), estimateSequenceDurationMs(speechGloss))
     return () => window.clearTimeout(t)
-  }, [signingKey])
+  }, [signingKey, speechGloss])
 
   const handleAvatarPlaybackEnd = useCallback(() => {
     setSigningActive(false)
@@ -157,7 +171,9 @@ export default function ConversationPanel() {
           continue
         }
         if (step.kind === 'speech_gloss') {
-          setSpeechGloss(toSignGloss(DEMO_HEARING_LINE))
+          const plan = buildSignPlan(DEMO_HEARING_LINE)
+          setSpeechGloss(plan.gloss)
+          setSpeechSignPlan(plan.sequence)
           setSigningKey((k) => k + 1)
           setSigningActive(true)
           setSpeechBusy(false)
@@ -213,6 +229,7 @@ export default function ConversationPanel() {
           <SpeechToSign
             transcript={speechTranscript}
             gloss={speechGloss}
+            signPlan={speechSignPlan}
             listening={speechListening}
             processing={speechBusy}
             avatarPhase={avatarPhase}
@@ -220,6 +237,7 @@ export default function ConversationPanel() {
             demoEnabled={demoEnabled}
             onStartSpeaking={handleStartSpeaking}
             onSpeechText={handleSpeechText}
+            onSubmitTypedText={handleTypedText}
             onAvatarPlaybackEnd={handleAvatarPlaybackEnd}
           />
         </div>

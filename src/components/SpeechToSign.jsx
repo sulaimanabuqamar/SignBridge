@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { simplifyText } from '../utils/mockTranslate'
-import GeneratedAvatar from './GeneratedAvatar'
+import ProceduralAvatar from './ProceduralAvatar'
 
 function getRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition
@@ -9,6 +9,7 @@ function getRecognition() {
 export default function SpeechToSign({
   transcript,
   gloss,
+  signPlan,
   listening,
   processing,
   avatarPhase = 'idle',
@@ -16,9 +17,11 @@ export default function SpeechToSign({
   demoEnabled,
   onStartSpeaking,
   onSpeechText,
+  onSubmitTypedText,
   onAvatarPlaybackEnd,
 }) {
   const recRef = useRef(null)
+  const [draft, setDraft] = useState('')
 
   useEffect(() => {
     return () => {
@@ -38,7 +41,15 @@ export default function SpeechToSign({
       /* noop */
     }
     recRef.current = null
+    setDraft('')
   }, [demoEnabled])
+
+  function handleTypedSubmit(event) {
+    event.preventDefault()
+    const text = simplifyText(draft)
+    if (!text || demoEnabled || processing) return
+    onSubmitTypedText?.(text)
+  }
 
   function handleStart() {
     if (demoEnabled || processing) return
@@ -99,6 +110,30 @@ export default function SpeechToSign({
         </button>
       </header>
 
+      <form onSubmit={handleTypedSubmit} className="flex flex-shrink-0 flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Type to sign</p>
+            <p className="text-sm text-zinc-500">Start here while we improve transcription.</p>
+          </div>
+          <button
+            type="submit"
+            disabled={demoEnabled || processing || !simplifyText(draft)}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Sign text
+          </button>
+        </div>
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={3}
+          placeholder="Type a sentence like: Can you send me the report tomorrow?"
+          disabled={demoEnabled || processing}
+          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-indigo-400"
+        />
+      </form>
+
       <div className="grid min-h-0 flex-shrink-0 gap-4 md:grid-cols-2">
         <div className="flex min-h-[120px] flex-col rounded-xl bg-zinc-50/90 p-4 ring-1 ring-zinc-100">
           <p className="text-xs font-medium text-zinc-500">Transcript</p>
@@ -122,10 +157,11 @@ export default function SpeechToSign({
       </div>
 
       <div className="min-h-0 flex-1">
-        <GeneratedAvatar
+        <ProceduralAvatar
           key={playbackKey}
           phrase={transcript}
           gloss={gloss}
+          signPlan={signPlan}
           phase={avatarPhase}
           playbackKey={playbackKey}
           demoMode={demoEnabled}
