@@ -4,7 +4,10 @@ let poseViewerDefined = false
 
 async function ensurePoseViewer() {
   if (poseViewerDefined) return
-  const { defineCustomElements } = await import('pose-viewer/loader')
+  const { defineCustomElements, setAssetPath } = await import('pose-viewer/loader')
+  if (typeof setAssetPath === 'function') {
+    setAssetPath(import.meta.url)
+  }
   defineCustomElements()
   poseViewerDefined = true
 }
