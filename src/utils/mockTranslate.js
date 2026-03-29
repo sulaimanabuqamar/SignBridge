@@ -38,14 +38,6 @@ const STOP = new Set([
 
 const TIME_WORDS = ['tomorrow', 'today', 'yesterday', 'now', 'later', 'tonight']
 
-const MOCK_SIGN_RESPONSES = [
-  'Yes — I will send the report tomorrow.',
-  'I understand. I can help with that.',
-  'Thank you for letting me know.',
-  'Could you say that one more time?',
-  'I need a moment to respond.',
-]
-
 /**
  * Normalize whitespace for mock translation.
  */
@@ -77,20 +69,3 @@ export function toSignGloss(text) {
   return ordered.map((w) => w.toUpperCase()).join(' ')
 }
 
-let mockCounter = 0
-
-/**
- * Mock camera “recognition” — fast, deterministic enough for demo.
- * @param {'default' | 'help' | 'repeat' | 'thanks' | 'demo'} context
- */
-export function mockSignRecognition(context = 'default') {
-  const scripted = {
-    help: 'I need help — please assist me when you can.',
-    repeat: 'Please repeat that. I want to be sure I understood.',
-    thanks: 'Thank you — I appreciate it.',
-    demo: 'Yes — I will send the report tomorrow morning.',
-  }
-  if (scripted[context]) return scripted[context]
-  mockCounter += 1
-  return MOCK_SIGN_RESPONSES[mockCounter % MOCK_SIGN_RESPONSES.length]
-}

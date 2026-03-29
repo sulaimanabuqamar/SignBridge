@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEMO_HEARING_LINE, DEMO_SCRIPT } from '../utils/demoScript'
-import { mockSignRecognition, simplifyText, toSignGloss } from '../utils/mockTranslate'
+import { mockSignRecognition } from '../utils/mockSignRecognition'
+import { simplifyText, toSignGloss } from '../utils/mockTranslate'
 import { playSoftChime } from '../utils/sound'
 import DemoMode from './DemoMode'
 import PhraseButtons from './PhraseButtons'
@@ -30,8 +31,10 @@ export default function ConversationPanel() {
   const [speechGloss, setSpeechGloss] = useState('')
   const [speechListening, setSpeechListening] = useState(false)
   const [speechBusy, setSpeechBusy] = useState(false)
-  const [avatarActive, setAvatarActive] = useState(false)
+  const [signingKey, setSigningKey] = useState(0)
+  const [signingActive, setSigningActive] = useState(false)
   const [signText, setSignText] = useState('')
+  const [signMeta, setSignMeta] = useState(/** @type {{ confidence: number; source: string } | null} */ (null))
   const [signWorking, setSignWorking] = useState(false)
   const [typingKey, setTypingKey] = useState(0)
   const [ttsEnabled, setTtsEnabled] = useState(true)
@@ -47,8 +50,10 @@ export default function ConversationPanel() {
     setSpeechGloss('')
     setSpeechListening(false)
     setSpeechBusy(false)
-    setAvatarActive(false)
+    setSigningKey(0)
+    setSigningActive(false)
     setSignText('')
+    setSignMeta(null)
     setSignWorking(false)
     setTypingKey((k) => k + 1)
   }, [])
@@ -58,13 +63,13 @@ export default function ConversationPanel() {
     if (!text) return
     setSpeechListening(false)
     setSpeechBusy(true)
-    setAvatarActive(false)
     await randomLatency()
     setSpeechTranscript(text)
     await delay(340)
     await randomLatency()
     setSpeechGloss(toSignGloss(text))
-    setAvatarActive(true)
+    setSigningKey((k) => k + 1)
+    setSigningActive(true)
     setSpeechBusy(false)
     playSoftChime()
   }, [])
@@ -73,7 +78,6 @@ export default function ConversationPanel() {
     if (demoEnabled) return
     setSpeechTranscript('')
     setSpeechGloss('')
-    setAvatarActive(false)
     setSpeechListening(true)
   }, [demoEnabled])
 
@@ -95,18 +99,29 @@ export default function ConversationPanel() {
     [demoEnabled, processSpeechInput],
   )
 
-  const runSignCapture = useCallback(async () => {
-    if (demoEnabled) return
-    setSignWorking(true)
-    setSignText('')
-    await randomLatency()
-    const text = mockSignRecognition('default')
+  const handleSignResult = useCallback((result) => {
+    setSignText(result.text)
+    setSignMeta({ confidence: result.confidence, source: result.source })
     setTypingKey((k) => k + 1)
-    setSignText(text)
-    setSignWorking(false)
     playSoftChime()
-    if (ttsRef.current) speak(text)
-  }, [demoEnabled])
+    if (ttsRef.current) speak(result.text)
+  }, [])
+
+  useEffect(() => {
+    if (signingKey === 0) return undefined
+    const t = window.setTimeout(() => setSigningActive(false), 6200)
+    return () => window.clearTimeout(t)
+  }, [signingKey])
+
+  const handleAvatarPlaybackEnd = useCallback(() => {
+    setSigningActive(false)
+  }, [])
+
+  const avatarPhase = useMemo(() => {
+    if (speechListening || (speechBusy && !speechGloss)) return 'preparing'
+    if (signingActive && speechGloss) return 'signing'
+    return 'idle'
+  }, [speechListening, speechBusy, speechGloss, signingActive])
 
   const handleDemoChange = useCallback(
     (next) => {
@@ -143,7 +158,8 @@ export default function ConversationPanel() {
         }
         if (step.kind === 'speech_gloss') {
           setSpeechGloss(toSignGloss(DEMO_HEARING_LINE))
-          setAvatarActive(true)
+          setSigningKey((k) => k + 1)
+          setSigningActive(true)
           setSpeechBusy(false)
           playSoftChime()
           continue
@@ -157,6 +173,7 @@ export default function ConversationPanel() {
           const reply = mockSignRecognition(step.context)
           setTypingKey((k) => k + 1)
           setSignText(reply)
+          setSignMeta({ confidence: 0.95, source: 'demo_inference' })
           setSignWorking(false)
           if (ttsRef.current) speak(reply)
         }
@@ -192,16 +209,18 @@ export default function ConversationPanel() {
       <PhraseButtons onPhrase={runPhraseShortcut} disabled={busy || demoEnabled} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-5">
-        <div className="min-h-[320px] flex-1">
+        <div className="min-h-[560px] flex-1">
           <SpeechToSign
             transcript={speechTranscript}
             gloss={speechGloss}
             listening={speechListening}
             processing={speechBusy}
-            avatarActive={avatarActive}
+            avatarPhase={avatarPhase}
+            playbackKey={signingKey}
             demoEnabled={demoEnabled}
             onStartSpeaking={handleStartSpeaking}
             onSpeechText={handleSpeechText}
+            onAvatarPlaybackEnd={handleAvatarPlaybackEnd}
           />
         </div>
 
@@ -215,10 +234,11 @@ export default function ConversationPanel() {
         <div className="min-h-[360px] flex-1">
           <SignToText
             recognizedText={signText}
-            working={signWorking}
             typingKey={typingKey}
             demoEnabled={demoEnabled}
-            onCapture={runSignCapture}
+            demoSignBusy={signWorking}
+            recognitionMeta={signMeta}
+            onSignResult={handleSignResult}
             ttsEnabled={ttsEnabled}
             onTtsChange={setTtsEnabled}
           />

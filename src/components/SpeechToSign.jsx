@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { simplifyText } from '../utils/mockTranslate'
+import GeneratedAvatar from './GeneratedAvatar'
 
 function getRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition
@@ -10,10 +11,12 @@ export default function SpeechToSign({
   gloss,
   listening,
   processing,
-  avatarActive,
+  avatarPhase = 'idle',
+  playbackKey = 0,
   demoEnabled,
   onStartSpeaking,
   onSpeechText,
+  onAvatarPlaybackEnd,
 }) {
   const recRef = useRef(null)
 
@@ -44,9 +47,7 @@ export default function SpeechToSign({
 
     if (!Recognition) {
       window.setTimeout(() => {
-        onSpeechText(
-          'Can you send me the report tomorrow?',
-        )
+        onSpeechText('Can you send me the report tomorrow?')
       }, 1400)
       return
     }
@@ -98,8 +99,8 @@ export default function SpeechToSign({
         </button>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
-        <div className="flex min-h-[140px] flex-col rounded-xl bg-zinc-50/90 p-4 ring-1 ring-zinc-100">
+      <div className="grid min-h-0 flex-shrink-0 gap-4 md:grid-cols-2">
+        <div className="flex min-h-[120px] flex-col rounded-xl bg-zinc-50/90 p-4 ring-1 ring-zinc-100">
           <p className="text-xs font-medium text-zinc-500">Transcript</p>
           <p className="mt-2 flex-1 text-lg leading-relaxed text-zinc-900">
             {transcript || (
@@ -112,7 +113,7 @@ export default function SpeechToSign({
           </p>
         </div>
 
-        <div className="flex min-h-[140px] flex-col overflow-hidden rounded-xl bg-indigo-50/60 p-4 ring-1 ring-indigo-100">
+        <div className="flex min-h-[120px] flex-col overflow-hidden rounded-xl bg-indigo-50/60 p-4 ring-1 ring-indigo-100">
           <p className="text-xs font-medium text-indigo-800/80">Sign gloss</p>
           <p className="mt-2 font-mono text-xl font-semibold leading-snug tracking-wide text-indigo-950">
             {gloss || <span className="font-sans text-base font-normal text-indigo-400">—</span>}
@@ -120,22 +121,16 @@ export default function SpeechToSign({
         </div>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-4">
-        <div
-          className={`relative flex h-28 w-28 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-zinc-100 to-zinc-50 ${
-            avatarActive ? 'animate-sign-avatar' : ''
-          }`}
-          aria-hidden
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(79,70,229,0.15),transparent_55%)]" />
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600/90 text-2xl text-white shadow-inner">
-            ✋
-          </div>
-        </div>
-        <p className="text-sm leading-relaxed text-zinc-500">
-          Avatar preview — your sign engine would drive a 3D or video avatar here. Gloss updates
-          sync to the beat of the demo.
-        </p>
+      <div className="min-h-0 flex-1">
+        <GeneratedAvatar
+          key={playbackKey}
+          phrase={transcript}
+          gloss={gloss}
+          phase={avatarPhase}
+          playbackKey={playbackKey}
+          demoMode={demoEnabled}
+          onPlaybackEnd={onAvatarPlaybackEnd}
+        />
       </div>
     </section>
   )

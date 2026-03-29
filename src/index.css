@@ -47,3 +47,33 @@ body {
 .animate-fade-in {
   animation: fade-in 0.45s ease-out forwards;
 }
+
+@keyframes ga-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.01);
+  }
+}
+
+.ga-breathe {
+  animation: ga-breathe 4.2s ease-in-out infinite;
+}
+
+@keyframes ga-prepare-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.06);
+  }
+}
+
+.ga-prepare-pulse {
+  animation: ga-prepare-pulse 1.8s ease-in-out infinite;
+}
