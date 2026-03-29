@@ -1,5 +1,3 @@
-import { recognizeSignFrame } from './mockSignRecognition'
-
 const FINGER_TIPS = [4, 8, 12, 16, 20]
 const FINGER_PIPS = [3, 6, 10, 14, 18]
 const FINGER_MCPS = [2, 5, 9, 13, 17]
@@ -67,6 +65,14 @@ function classifyFromHand(hand, handedness = 'Unknown') {
     }
   }
 
+  if (openCount >= 4 && fingers.openness <= 1.45) {
+    return {
+      text: 'Stop',
+      confidence: 0.76,
+      source: `hand_landmarker_${handedness.toLowerCase()}`,
+    }
+  }
+
   if (openCount <= 1 && fingers.openness < 1.18) {
     return {
       text: 'No',
@@ -91,6 +97,38 @@ function classifyFromHand(hand, handedness = 'Unknown') {
     }
   }
 
+  if (fingers.thumbOpen && fingers.indexOpen && fingers.middleOpen && !fingers.ringOpen && !fingers.pinkyOpen) {
+    return {
+      text: 'Thank you',
+      confidence: 0.78,
+      source: `hand_landmarker_${handedness.toLowerCase()}`,
+    }
+  }
+
+  if (fingers.thumbOpen && fingers.pinkyOpen && !fingers.indexOpen && !fingers.middleOpen && !fingers.ringOpen) {
+    return {
+      text: 'Water',
+      confidence: 0.74,
+      source: `hand_landmarker_${handedness.toLowerCase()}`,
+    }
+  }
+
+  if (!fingers.thumbOpen && !fingers.indexOpen && !fingers.middleOpen && !fingers.ringOpen && fingers.pinkyOpen) {
+    return {
+      text: 'Bathroom',
+      confidence: 0.72,
+      source: `hand_landmarker_${handedness.toLowerCase()}`,
+    }
+  }
+
+  if (fingers.thumbOpen && fingers.indexOpen && !fingers.middleOpen && !fingers.ringOpen && !fingers.pinkyOpen) {
+    return {
+      text: 'Okay',
+      confidence: 0.73,
+      source: `hand_landmarker_${handedness.toLowerCase()}`,
+    }
+  }
+
   if (fingers.thumbOpen && !fingers.indexOpen && !fingers.middleOpen && !fingers.ringOpen) {
     return {
       text: 'Yes',
@@ -99,11 +137,7 @@ function classifyFromHand(hand, handedness = 'Unknown') {
     }
   }
 
-  return {
-    text: 'One moment please.',
-    confidence: 0.56,
-    source: `hand_landmarker_${handedness.toLowerCase()}`,
-  }
+  return null
 }
 
 function getSequenceSummary(history) {
@@ -180,6 +214,15 @@ function classifyFromSequence(history) {
     }
   }
 
+  if (openCount >= 4 && openness > 1.3 && xTravel <= 0.12) {
+    return {
+      text: 'Stop',
+      confidence: 0.79,
+      source,
+      sampleCount,
+    }
+  }
+
   if (openCount <= 1.35 && openness < 1.18 && yTravel > 0.09) {
     return {
       text: 'Yes',
@@ -199,6 +242,66 @@ function classifyFromSequence(history) {
     return {
       text: xTravel > 0.055 || yTravel > 0.045 ? 'No' : 'Please repeat',
       confidence: clamp(0.75 + Math.max(xTravel, yTravel) * 0.45, 0.75, 0.9),
+      source,
+      sampleCount,
+    }
+  }
+
+  if (
+    majority.thumbOpen &&
+    majority.indexOpen &&
+    majority.middleOpen &&
+    !majority.ringOpen &&
+    !majority.pinkyOpen
+  ) {
+    return {
+      text: 'Thank you',
+      confidence: 0.8,
+      source,
+      sampleCount,
+    }
+  }
+
+  if (
+    majority.thumbOpen &&
+    majority.pinkyOpen &&
+    !majority.indexOpen &&
+    !majority.middleOpen &&
+    !majority.ringOpen
+  ) {
+    return {
+      text: 'Water',
+      confidence: 0.77,
+      source,
+      sampleCount,
+    }
+  }
+
+  if (
+    !majority.thumbOpen &&
+    !majority.indexOpen &&
+    !majority.middleOpen &&
+    !majority.ringOpen &&
+    majority.pinkyOpen
+  ) {
+    return {
+      text: 'Bathroom',
+      confidence: 0.75,
+      source,
+      sampleCount,
+    }
+  }
+
+  if (
+    majority.thumbOpen &&
+    majority.indexOpen &&
+    !majority.middleOpen &&
+    !majority.ringOpen &&
+    !majority.pinkyOpen
+  ) {
+    return {
+      text: 'Okay',
+      confidence: 0.76,
       source,
       sampleCount,
     }
@@ -225,39 +328,39 @@ function classifyFromSequence(history) {
   return null
 }
 
+function preferSequenceResult(sequenceResult, frameResult) {
+  if (sequenceResult && frameResult && sequenceResult.text === frameResult.text) {
+    return {
+      text: sequenceResult.text,
+      confidence: clamp(Math.max(sequenceResult.confidence, frameResult.confidence), 0, 0.96),
+      source: sequenceResult.source,
+    }
+  }
+
+  if (sequenceResult?.confidence >= 0.74) return sequenceResult
+  if (frameResult?.confidence >= 0.8) return frameResult
+  return sequenceResult || frameResult || null
+}
+
 export function recognizeHandCapture({
   detection,
   history = [],
-  imageData,
   demoMode,
-  captureIndex,
-  hasLiveVideo,
 }) {
-  if (!demoMode && history.length) {
-    const sequenceResult = classifyFromSequence(history)
-    if (sequenceResult) {
-      return {
-        text: sequenceResult.text,
-        confidence: sequenceResult.confidence,
-        source: sequenceResult.source,
-        timestamp: Date.now(),
-      }
-    }
-  }
+  if (demoMode) return null
 
-  if (!demoMode && detection?.landmarks?.length) {
-    const primaryHand = detection.landmarks[0]
-    const primaryHandedness = detection.handednesses?.[0]?.[0]?.categoryName || 'Unknown'
-    return {
-      ...classifyFromHand(primaryHand, primaryHandedness),
-      timestamp: Date.now(),
-    }
-  }
+  const sequenceResult = history.length ? classifyFromSequence(history) : null
+  const frameResult = detection?.landmarks?.length
+    ? classifyFromHand(detection.landmarks[0], detection.handednesses?.[0]?.[0]?.categoryName || 'Unknown')
+    : null
 
-  return recognizeSignFrame({
-    imageData,
-    demoMode,
-    captureIndex,
-    hasLiveVideo,
-  })
+  const result = preferSequenceResult(sequenceResult, frameResult)
+  if (!result) return null
+
+  return {
+    text: result.text,
+    confidence: result.confidence,
+    source: result.source,
+    timestamp: Date.now(),
+  }
 }

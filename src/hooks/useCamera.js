@@ -38,24 +38,38 @@ function mapGetUserMediaError(err) {
 
 /**
  * Webcam stream with cleanup. Attach `videoRef` to `<video ref={videoRef} muted playsInline autoPlay />`.
+ * @param {{ enabled?: boolean }} [options]
  */
-export function useCamera() {
+export function useCamera(options = {}) {
+  const { enabled = true } = options
   const videoRef = useRef(null)
   const streamRef = useRef(null)
-  const [status, setStatus] = useState(/** @type {CameraHookStatus} */ ('requesting'))
+  const [status, setStatus] = useState(/** @type {CameraHookStatus} */ (enabled ? 'requesting' : 'idle'))
   const [error, setError] = useState(/** @type {{ code: string; message: string } | null} */ (null))
   const [retryToken, setRetryToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
 
-    function stopTracks() {
+    function stopTracks(nextStatus = 'idle') {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop())
         streamRef.current = null
       }
       const el = videoRef.current
       if (el) el.srcObject = null
+      if (!cancelled) {
+        setStatus(/** @type {CameraHookStatus} */ (nextStatus))
+      }
+    }
+
+    if (!enabled) {
+      setError(null)
+      stopTracks('idle')
+      return () => {
+        cancelled = true
+        stopTracks('idle')
+      }
     }
 
     async function open() {
@@ -99,9 +113,8 @@ export function useCamera() {
         window.requestAnimationFrame(bind)
       } catch (e) {
         if (cancelled) return
-        stopTracks()
+        stopTracks('error')
         setError(mapGetUserMediaError(e))
-        setStatus('error')
       }
     }
 
@@ -109,9 +122,9 @@ export function useCamera() {
 
     return () => {
       cancelled = true
-      stopTracks()
+      stopTracks('idle')
     }
-  }, [retryToken])
+  }, [enabled, retryToken])
 
   const retry = useCallback(() => {
     setRetryToken((n) => n + 1)

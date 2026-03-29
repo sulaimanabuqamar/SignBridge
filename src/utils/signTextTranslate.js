@@ -46,6 +46,26 @@ const TRANSLATIONS = {
     fr: 'Merci',
     es: 'Gracias',
   },
+  Stop: {
+    en: 'Stop',
+    fr: 'Arret',
+    es: 'Detente',
+  },
+  Water: {
+    en: 'Water',
+    fr: 'Eau',
+    es: 'Agua',
+  },
+  Bathroom: {
+    en: 'Bathroom',
+    fr: 'Toilettes',
+    es: 'Bano',
+  },
+  Okay: {
+    en: 'Okay',
+    fr: "D'accord",
+    es: 'Esta bien',
+  },
   'Can you help me?': {
     en: 'Can you help me?',
     fr: "Pouvez-vous m'aider ?",
