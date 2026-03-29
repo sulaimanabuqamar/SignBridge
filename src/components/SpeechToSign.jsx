@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+import { SIGN_LANGUAGE_OPTIONS } from '../data/signLanguages'
 import { simplifyText } from '../utils/mockTranslate'
 import PoseSigner from './PoseSigner'
 
 function getRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition
 }
+
+const POPULAR_ENGLISH_SIGN_LANGUAGES = new Set(['ase', 'bfi', 'asf'])
 
 export default function SpeechToSign({
   transcript,
@@ -21,10 +24,26 @@ export default function SpeechToSign({
   onSpeechError,
   onSubmitTypedText,
   speechError = '',
+  signedLanguage = 'ase',
+  onSignedLanguageChange,
 }) {
   const recRef = useRef(null)
   const [draft, setDraft] = useState('')
   const [supportsRecognition, setSupportsRecognition] = useState(true)
+  const signLanguageChoices = SIGN_LANGUAGE_OPTIONS
+    .filter((option) => POPULAR_ENGLISH_SIGN_LANGUAGES.has(option.signed))
+    .filter((option, index, all) => all.findIndex((entry) => entry.signed === option.signed) === index)
+    .map((option) => ({
+      value: option.signed,
+      label: option.abbreviation
+        ? `${option.name} (${option.abbreviation})`
+        : option.name,
+    }))
+    .sort((a, b) => {
+      if (a.value === 'ase') return -1
+      if (b.value === 'ase') return 1
+      return a.label.localeCompare(b.label)
+    })
 
   useEffect(() => {
     setSupportsRecognition(Boolean(getRecognition()))
@@ -186,13 +205,28 @@ export default function SpeechToSign({
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Type to sign</p>
             <p className="text-sm text-zinc-500">Manual input still works if microphone transcription is unavailable.</p>
           </div>
-          <button
-            type="submit"
-            disabled={demoEnabled || processing || !simplifyText(draft)}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Sign text
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={signedLanguage}
+              onChange={(event) => onSignedLanguageChange?.(event.target.value)}
+              disabled={demoEnabled || processing}
+              className="max-w-[18rem] rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 shadow-sm outline-none focus:border-indigo-400"
+              aria-label="Select sign language"
+            >
+              {signLanguageChoices.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={demoEnabled || processing || !simplifyText(draft)}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sign text
+            </button>
+          </div>
         </div>
         <textarea
           value={draft}
@@ -218,6 +252,9 @@ export default function SpeechToSign({
 
         <div className="flex min-h-[120px] flex-col overflow-hidden rounded-xl bg-indigo-50/60 p-4 ring-1 ring-indigo-100">
           <p className="text-xs font-medium text-indigo-800/80">Signed text</p>
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-indigo-500">
+            {signLanguageChoices.find((option) => option.value === signedLanguage)?.label || 'American Sign Language (ASL)'}
+          </p>
           <p className="mt-2 font-mono text-xl font-semibold leading-snug tracking-wide text-indigo-950">
             {gloss || <span className="font-sans text-base font-normal text-indigo-400">-</span>}
           </p>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCamera } from '../hooks/useCamera'
 import { detectHands } from '../utils/handLandmarker'
 import { clearOverlay, drawHandOverlay } from '../utils/handOverlay'
 import { recognizeHandCapture } from '../utils/handRecognition'
+import { SIGN_LANGUAGE_OPTIONS, SPOKEN_LANGUAGE_OPTIONS } from '../utils/signTextTranslate'
 import TypingText from './TypingText'
 
 function delay(ms) {
@@ -23,6 +24,10 @@ function processingDelay() {
  *   onSignResult: (result: { text: string; confidence: number; source: string; timestamp: number }) => void
  *   ttsEnabled: boolean
  *   onTtsChange: (v: boolean) => void
+ *   signSourceLanguage: string
+ *   onSignSourceLanguageChange: (v: string) => void
+ *   signOutputLanguage: string
+ *   onSignOutputLanguageChange: (v: string) => void
  * }} props
  */
 export default function SignToText({
@@ -34,6 +39,10 @@ export default function SignToText({
   onSignResult,
   ttsEnabled,
   onTtsChange,
+  signSourceLanguage,
+  onSignSourceLanguageChange,
+  signOutputLanguage,
+  onSignOutputLanguageChange,
 }) {
   const { videoRef, status: cameraStatus, error: cameraError, isLive, retry } = useCamera()
   const canvasRef = useRef(null)
@@ -181,7 +190,7 @@ export default function SignToText({
 
   const cameraLabel =
     cameraStatus === 'requesting'
-      ? 'Starting camera…'
+      ? 'Starting camera...'
       : cameraStatus === 'live'
         ? 'Live camera'
         : cameraBroken
@@ -195,7 +204,7 @@ export default function SignToText({
           <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
             Deaf / hard-of-hearing participant
           </p>
-          <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Sign → Text</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Sign -&gt; Text</h2>
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-600">
           <input
@@ -207,6 +216,46 @@ export default function SignToText({
           Read aloud (TTS)
         </label>
       </header>
+
+      <div className="grid flex-shrink-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-2">
+          {SIGN_LANGUAGE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSignSourceLanguageChange(option.value)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                signSourceLanguage === option.value
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-center text-zinc-400" aria-hidden>
+          ?
+        </div>
+
+        <div className="flex flex-wrap items-center justify-start gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-2">
+          {SPOKEN_LANGUAGE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSignOutputLanguageChange(option.value)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                signOutputLanguage === option.value
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(0,220px)_1fr]">
         <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-900 shadow-inner ring-1 ring-zinc-800/20 md:aspect-auto md:min-h-[180px]">
@@ -230,14 +279,14 @@ export default function SignToText({
           {cameraStatus === 'requesting' ? (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-zinc-800 to-zinc-950">
               <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/15 border-t-indigo-400" />
-              <p className="text-xs font-medium text-zinc-300">Connecting to camera…</p>
+              <p className="text-xs font-medium text-zinc-300">Connecting to camera...</p>
             </div>
           ) : null}
 
           {cameraBroken ? (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-zinc-800 to-zinc-950 p-4 text-center">
               <span className="text-2xl opacity-90" aria-hidden>
-                📷
+                ??
               </span>
               <p className="text-sm font-semibold text-zinc-200">
                 {cameraStatus === 'unsupported' ? 'Camera not supported' : 'Camera unavailable'}
@@ -285,7 +334,7 @@ export default function SignToText({
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/55 backdrop-blur-[2px]">
               <div className="mb-3 h-12 w-12 animate-spin rounded-full border-2 border-indigo-300/40 border-t-indigo-400" />
               <span className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-zinc-900 shadow">
-                {demoSignBusy ? 'Demo recognition…' : capturePhase === 'capturing' ? 'Capturing frame…' : 'Analyzing sign…'}
+                {demoSignBusy ? 'Demo recognition...' : capturePhase === 'capturing' ? 'Capturing frame...' : 'Analyzing sign...'}
               </span>
               <div className="mt-4 h-0.5 w-40 overflow-hidden rounded-full bg-white/15">
                 <div className="h-full w-full origin-left animate-pulse bg-indigo-400/80" />
@@ -296,12 +345,15 @@ export default function SignToText({
 
         <div className="flex min-h-[120px] flex-col rounded-xl bg-zinc-50/90 p-4 ring-1 ring-zinc-100">
           <p className="text-xs font-medium text-zinc-500">Recognized text</p>
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+            {SPOKEN_LANGUAGE_OPTIONS.find((option) => option.value === signOutputLanguage)?.label || 'English'}
+          </p>
           <div className="mt-2 min-h-[3rem] text-lg leading-relaxed text-zinc-900">
             {recognizedText ? (
               <TypingText key={typingKey} text={recognizedText} className="animate-fade-in" />
             ) : (
               <span className="text-zinc-400">
-                Capture a sign gesture — we analyze a video frame locally for this demo.
+                Capture a sign gesture - we analyze live landmarks and translate the recognized phrase into the selected output language.
               </span>
             )}
           </div>
@@ -324,10 +376,10 @@ export default function SignToText({
         >
           {busy
             ? demoSignBusy
-              ? 'Processing…'
+              ? 'Processing...'
               : capturePhase === 'capturing'
-                ? 'Capturing…'
-                : 'Processing…'
+                ? 'Capturing...'
+                : 'Processing...'
             : 'Capture Sign'}
         </button>
         <p className="max-w-sm text-right text-[10px] text-zinc-400">{cameraLabel}</p>
@@ -342,3 +394,4 @@ function formatSource(source) {
   if (source.startsWith('hand_landmarker')) return 'MediaPipe hand landmarks'
   return source
 }
+

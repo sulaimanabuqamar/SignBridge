@@ -3,6 +3,7 @@ import { DEMO_HEARING_LINE, DEMO_SCRIPT } from '../utils/demoScript'
 import { estimateSequenceDurationMs } from '../utils/avatarMotion'
 import { mockSignRecognition } from '../utils/mockSignRecognition'
 import { simplifyText } from '../utils/mockTranslate'
+import { getSpokenLanguageMeta, translateRecognizedSign } from '../utils/signTextTranslate'
 import { buildSignedPoseUrl } from '../utils/translateApi'
 import { playSoftChime } from '../utils/sound'
 import DemoMode from './DemoMode'
@@ -19,11 +20,12 @@ function randomLatency() {
   return delay(ms)
 }
 
-function speak(text) {
+function speak(text, lang = 'en-US') {
   if (!text || !window.speechSynthesis) return
   window.speechSynthesis.cancel()
   const u = new SpeechSynthesisUtterance(text)
   u.rate = 1
+  u.lang = lang
   window.speechSynthesis.speak(u)
 }
 
@@ -35,10 +37,13 @@ export default function ConversationPanel() {
   const [speechError, setSpeechError] = useState('')
   const [speechListening, setSpeechListening] = useState(false)
   const [speechBusy, setSpeechBusy] = useState(false)
+  const [signedLanguage, setSignedLanguage] = useState('ase')
   const [signingKey, setSigningKey] = useState(0)
   const [signingActive, setSigningActive] = useState(false)
   const [signText, setSignText] = useState('')
   const [signMeta, setSignMeta] = useState(/** @type {{ confidence: number; source: string } | null} */ (null))
+  const [signSourceLanguage, setSignSourceLanguage] = useState('ase')
+  const [signOutputLanguage, setSignOutputLanguage] = useState('en')
   const [signWorking, setSignWorking] = useState(false)
   const [typingKey, setTypingKey] = useState(0)
   const [ttsEnabled, setTtsEnabled] = useState(true)
@@ -73,12 +78,12 @@ export default function ConversationPanel() {
     setSpeechBusy(true)
     await delay(180)
     setSpeechGloss(simplifyText(text))
-    setSpeechPoseUrl(buildSignedPoseUrl(text))
+    setSpeechPoseUrl(buildSignedPoseUrl(text, 'en', signedLanguage))
     setSigningKey((k) => k + 1)
     setSigningActive(true)
     setSpeechBusy(false)
     playSoftChime()
-  }, [])
+  }, [signedLanguage])
 
   const handleStartSpeaking = useCallback(() => {
     if (demoEnabled) return
@@ -137,12 +142,16 @@ export default function ConversationPanel() {
   )
 
   const handleSignResult = useCallback((result) => {
-    setSignText(result.text)
+    const translated = translateRecognizedSign(result.text, signOutputLanguage)
+    setSignText(translated)
     setSignMeta({ confidence: result.confidence, source: result.source })
     setTypingKey((k) => k + 1)
     playSoftChime()
-    if (ttsRef.current) speak(result.text)
-  }, [])
+    if (ttsRef.current) {
+      const spokenMeta = getSpokenLanguageMeta(signOutputLanguage)
+      speak(translated, spokenMeta.ttsLang)
+    }
+  }, [signOutputLanguage])
 
   useEffect(() => {
     if (signingKey === 0) return undefined
@@ -192,7 +201,7 @@ export default function ConversationPanel() {
         }
         if (step.kind === 'speech_gloss') {
           setSpeechGloss(simplifyText(DEMO_HEARING_LINE))
-          setSpeechPoseUrl(buildSignedPoseUrl(DEMO_HEARING_LINE))
+          setSpeechPoseUrl(buildSignedPoseUrl(DEMO_HEARING_LINE, 'en', signedLanguage))
           setSigningKey((k) => k + 1)
           setSigningActive(true)
           setSpeechBusy(false)
@@ -206,11 +215,15 @@ export default function ConversationPanel() {
         }
         if (step.kind === 'sign_reply') {
           const reply = mockSignRecognition(step.context)
+          const translated = translateRecognizedSign(reply, signOutputLanguage)
           setTypingKey((k) => k + 1)
-          setSignText(reply)
+          setSignText(translated)
           setSignMeta({ confidence: 0.95, source: 'demo_inference' })
           setSignWorking(false)
-          if (ttsRef.current) speak(reply)
+          if (ttsRef.current) {
+            const spokenMeta = getSpokenLanguageMeta(signOutputLanguage)
+            speak(translated, spokenMeta.ttsLang)
+          }
         }
       }
     }
@@ -219,7 +232,7 @@ export default function ConversationPanel() {
     return () => {
       cancelled = true
     }
-  }, [demoEnabled, resetOutputs])
+  }, [demoEnabled, resetOutputs, signOutputLanguage, signedLanguage])
 
   const busy = demoEnabled || speechBusy || speechListening
 
@@ -260,6 +273,8 @@ export default function ConversationPanel() {
             onSpeechError={handleSpeechError}
             onSubmitTypedText={handleTypedText}
             speechError={speechError}
+            signedLanguage={signedLanguage}
+            onSignedLanguageChange={setSignedLanguage}
           />
         </div>
 
@@ -280,6 +295,10 @@ export default function ConversationPanel() {
             onSignResult={handleSignResult}
             ttsEnabled={ttsEnabled}
             onTtsChange={setTtsEnabled}
+            signSourceLanguage={signSourceLanguage}
+            onSignSourceLanguageChange={setSignSourceLanguage}
+            signOutputLanguage={signOutputLanguage}
+            onSignOutputLanguageChange={setSignOutputLanguage}
           />
         </div>
       </div>

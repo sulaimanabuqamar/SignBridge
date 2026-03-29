@@ -102,29 +102,6 @@ export function estimateSequenceDurationMs(gloss) {
   return words.length * WORD_BEAT_MS + Math.max(0, words.length - 1) * 80 + SEQUENCE_TAIL_MS + 600
 }
 
-// ─── 3D pose map (used by GeneratedAvatar) ───────────────────────────────────
-/**
- * Target Euler rotations (radians) and vertical offset (model units) for the
- * Hand_Left_30 Object3D loaded from hand_rig.glb.
- *
- * Axis orientation in the loaded model (after centering):
- *   +X = viewer's right,  +Y = up,  +Z = toward viewer
- *
- * Pose design rationale:
- *   idle  — gentle neutral rest, slight inward tilt; also used as the base for
- *            the idle breathing sway.
- *   up    — wrist raised and angled toward viewer: approximates ASL TIME sign
- *            (palm forward, wrist cocked up).
- *   push  — wrist rolled slightly outward + forward tilt: approximates GIVE /
- *            SEND (hand extends in front of the signer's body).
- *   tap   — strong wrist flexion pointing the hand downward: approximates noun
- *            reference signs where the index targets a location.
- *   sweep — large lateral yaw: approximates THANK / PLEASE broad open sweeps.
- *   wave  — combined lateral + diagonal tilt: approximates HI / BYE wave.
- *
- * All values tuned against the GLB's default left-hand rest pose so the
- * motions read clearly even without per-finger articulation.
- */
 export const MOTION_POSES_3D = {
   //          rx      ry      rz      py
   idle:  { rx:  0.06, ry:  0.00, rz:  0.00, py:  0.00 },
